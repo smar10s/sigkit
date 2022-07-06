@@ -7,7 +7,7 @@ from pytui import StyledWindow, Plot
 from radio import Radio
 
 
-Styles: dict[str, dict[str, dict[str, int]]] = {
+Styles: dict[str, dict] = {
     # colors from
     # https://marketplace.visualstudio.com/items?itemName=enkia.tokyo-night
     'tokyonight': {
@@ -85,11 +85,11 @@ def to_db(values: list[float]) -> list[float]:
     return list(10.0 * np.log10(values))
 
 
-def zero_adjust(values: list[float], offset: float = 1.0) -> list[float]:
+def zero_adjust(values: list[float], offset: float) -> list[float]:
     return [x - offset for x in values]
 
 
-def to_dbfs(values: list[float], offset: float = 1.0) -> list[float]:
+def to_dbfs(values: list[float], offset: float) -> list[float]:
     return zero_adjust(to_db(values), offset)
 
 
@@ -116,7 +116,34 @@ class Visualizer(abc.ABC):
             window.draw()
 
 
-class Seek(Visualizer):
+class FFTVisualizer(Visualizer):
+    def __init__(
+        self,
+        radio: Radio,
+        mindbfs: int = 0,
+        maxdbfs: int = 50,
+        nperseg: int = 1024,
+        window: str = 'hann',
+        zoff: float = -1.0,
+        style: dict = Styles['tokyonight']
+    ) -> None:
+        super().__init__(radio, style)
+        self.mindbfs = mindbfs
+        self.maxdbfs = maxdbfs
+        self.nperseg = nperseg
+        self.window = window
+        self.zoff = zoff
+
+    def get_dbfs(self, sample: list[np.complex64]) -> list[float]:
+        return to_dbfs(get_psd(
+            sample,
+            window=self.window,
+            nperseg=self.nperseg,
+            fs=self.radio.rx_bw()
+        ), self.zoff)
+
+
+class Seek(FFTVisualizer):
     def __init__(
         self,
         radio: Radio,
@@ -126,27 +153,19 @@ class Seek(Visualizer):
         maxdbfs: int = 50,
         nperseg: int = 1024,
         window: str = 'hann',
+        zoff: float = -1.0,
         style: dict = Styles['tokyonight']
     ) -> None:
-        super().__init__(radio, style)
+        super().__init__(radio, mindbfs, maxdbfs, nperseg, window, zoff, style)
         self.fstart = fstart
         self.fstop = fstop
-        self.mindbfs = mindbfs
-        self.maxdbfs = maxdbfs
-        self.nperseg = nperseg
-        self.window = window
         self.signals: dict[int, float] = {}
 
     def find_signals(
         self,
         sample: list[np.complex64]
     ) -> list[tuple[int, float]]:
-        dbfs = to_dbfs(get_psd(
-            sample,
-            window=self.window,
-            nperseg=self.nperseg,
-            fs=self.radio.rx_bw()
-        ))
+        dbfs = self.get_dbfs(sample)
         return [(i, x) for i, x in enumerate(dbfs) if x >= self.mindbfs]
 
     def have_signal(self, sample: list[np.complex64]) -> bool:
@@ -185,9 +204,7 @@ class Seek(Visualizer):
 
     def update_xaxis(self) -> None:
         self.xaxis.update_content(make_frequency_labels(
-            self.xaxis.width,
-            self.fstart,
-            self.fstop
+            self.xaxis.width, self.fstart, self.fstop
         ))
 
     def update_yaxis(self) -> None:

@@ -1,7 +1,7 @@
 import signal
-from optparse import OptionParser
+from optparse import OptionParser, OptionGroup, OptionValueError
 from pytui import Terminal, StyledWindow, shutdown
-from visualizers import Seek
+from visualizers import Seek, Styles
 from radio import PlutoRadio
 
 
@@ -12,12 +12,7 @@ parser.add_option('-f', '--frange', type='string', default=None, help=(
     'defaults to radio range.'
 ))
 
-parser.add_option('-r', '--rate', type='int', default=int(1e6), help=(
-    'sample rate/bandwidth/step size. '
-    'default %default hz.'
-))
-
-parser.add_option('-l', '--linger', type='int', default=40, help=(
+parser.add_option('-l', '--linger', type='int', default=20, help=(
     'number of samples to collect before moving to next frequency. '
     'default %default.'
 ))
@@ -28,28 +23,48 @@ parser.add_option('-p', '--mindbfs', type='int', default=0, help=(
 ))
 
 # fft options
-parser.add_option('--fftsize', type='int', default=1024, help=(
+group = OptionGroup(parser, 'FFT')
+parser.add_option_group(group)
+
+group.add_option('--fftsize', type='int', default=1024, help=(
     'rx buffer and fft size. '
     'default %default.'
 ))
 
-parser.add_option('--nperseg', type='int', default=None, help=(
+group.add_option('--nperseg', type='int', default=None, help=(
     "welch's method segment size. set to fft size to use faster non-segmented "
     'periodogram. '
     'default fftsize/4.'
 ))
 
-parser.add_option('--window', type='string', default='hann', help=(
+group.add_option('--window', type='string', default='hann', help=(
     "any scipy windowing function that doesn't require parameters (boxcar, "
     "blackman, hamming, hann, etc). "
     'default %default.'
 ))
 
-parser.add_option('--gain', type='string', default='fast', help=(
+# radio options
+group = OptionGroup(parser, 'Radio')
+parser.add_option_group(group)
+
+group.add_option('-r', '--rate', type='int', default=int(1e6), help=(
+    'iq sample rate/bandwidth/step size. '
+    'default %default hz.'
+))
+
+group.add_option('--gain', type='string', default='fast', help=(
     "rx gain in db, or auto attack style (fast or slow). "
     'default %default'
 ))
 
+# ui options
+group = OptionGroup(parser, 'Display')
+parser.add_option_group(group)
+
+group.add_option('--style', type='string', default='tokyonight', help=(
+    'visual style. options are tokyonight. '
+    'default %default'
+))
 
 (options, args) = parser.parse_args()
 
@@ -63,6 +78,9 @@ if options.gain in ('fast', 'slow'):
 else:
     radio.update_rx_gain(int(options.gain))
 
+# ui config
+terminal = Terminal()
+
 minf = radio.min_freq()
 maxf = radio.max_freq()
 
@@ -72,12 +90,10 @@ else:
     (fstart, fstop) = options.frange.split(':')
     fstart = minf if fstart == '' else min(maxf, max(minf, int(fstart)))
     fstop = maxf if fstop == '' else min(maxf, max(minf, int(fstop)))
+    if fstart > fstop:
+        raise OptionValueError('start frequency must be lower than stop')
     options.frange = (fstart, fstop)
 (fstart, fstop) = options.frange
-
-# ui config
-terminal = Terminal()
-terminal.fullscreen()
 
 (fftsize, nperseg) = (options.fftsize, options.nperseg)
 
@@ -87,29 +103,34 @@ seek = Seek(
     fstop=fstop,
     mindbfs=options.mindbfs,
     nperseg=fftsize//4 if nperseg is None else min(fftsize, nperseg),
-    window=options.window
+    window=options.window,
+    zoff=-1.0,
+    style=Styles[options.style]
 )
 
-seek.layout(
-    StyledWindow(0, 0, terminal.get_columns(), terminal.get_lines())
-)
+seek.layout(StyledWindow(0, 0, terminal.get_columns(), terminal.get_lines()))
 
-signal.signal(signal.SIGINT, shutdown)
+signal.signal(signal.SIGINT, lambda signal, frame: shutdown())
 
-
-# seek signal
 (step, linger) = (options.rate, options.linger)
-while True:
-    for f in range(fstart, fstop+step, step):
-        radio.update_rx_freq(f)
-        seek.update_header()
 
-        for i in range(linger):
-            sample = radio.rx()
+try:
+    terminal.fullscreen()
 
-            if seek.have_signal(sample):
-                seek.update_sample(sample)
-                break
+    # seek
+    while True:
+        for f in range(fstart, fstop+step, step):
+            radio.update_rx_freq(f)
+            seek.update_header()
 
-        seek.draw()
-        terminal.flush()
+            for i in range(linger):
+                sample = radio.rx()
+
+                if seek.have_signal(sample):
+                    seek.update_sample(sample)
+                    break
+
+            seek.draw()
+            terminal.flush()
+finally:
+    shutdown()
