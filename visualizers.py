@@ -1,20 +1,38 @@
 import abc
+import optparse
 import numpy as np
 from scipy import signal
 from scipy import fft
+from scipy import interpolate
+from matplotlib import colormaps
 from math import ceil
-from pytui import StyledWindow, Plot
+from pytui import StyledWindow, Plot, Text
 from radio import Radio
+
+
+def get_colormap(name: str) -> list[tuple[int, int, int]]:
+    colors = [colormaps[name](x) for x in range(0, 256)]
+    return [(int(r*255), int(g*255), int(b*255)) for (r, g, b, a) in colors]
 
 
 Styles: dict[str, dict] = {
     # colors from
     # https://marketplace.visualstudio.com/items?itemName=enkia.tokyo-night
     'tokyonight': {
+        'colormap': get_colormap('viridis'),
         'header': {'bg': 0x1a1b26, 'fg': 0xa9b1d6},
         # 'plot': {'bg': 0x24283b, 'fg': 0xf7768e},   # red
         'plot': {'bg': 0x24283b, 'fg': 0x7aa2f7},   # blue
         'plot-label': {'bg': 0x24283b, 'fg': 0x565f89}
+    },
+
+    # https://matplotlib.org/matplotblog/posts/matplotlib-cyberpunk-style/
+    'cyberpunk': {
+        'colormap': get_colormap('viridis'),
+        'header': {'bg': 0x2A3459, 'fg': 0x08F7FE},
+        # 'plot': {'bg': 0x2A3459, 'fg': 0x08F7FE},
+        'plot': {'bg': 0x2A3459, 'fg': 0xFE53BB},
+        'plot-label': {'bg': 0x2A3459, 'fg': 0x08F7FE}
     }
 }
 
@@ -91,6 +109,19 @@ def zero_adjust(values: list[float], offset: float) -> list[float]:
 
 def to_dbfs(values: list[float], offset: float) -> list[float]:
     return zero_adjust(to_db(values), offset)
+
+
+# fits a list of one size to another by lerping the values
+def fit_values(values: list[float], length: int) -> list[float]:
+    if len(values) == length:
+        return values
+    # create function to interpolate from 0-length to values
+    x = np.arange(0, len(values))
+    f = interpolate.interp1d(np.arange(0, len(values)), values, kind='nearest')
+    # linearly subdivide x into length sample
+    sx = np.linspace(x[0], x[-1], length)
+    # scale sample into new length
+    return f(sx)
 
 
 class Visualizer(abc.ABC):
@@ -246,3 +277,118 @@ class Seek(FFTVisualizer):
         if update:
             self.update_yaxis()
             self.update_plot()
+
+
+class PSD(FFTVisualizer):
+    def layout(self, container: StyledWindow) -> None:
+        dbwidth = max(len(str(self.mindbfs)), len(str(self.maxdbfs)))
+        (self.yaxis, body) = container.vsplit(dbwidth)
+        (self.plot, self.xaxis) = body.hsplit(None, 1)
+
+        self.windows = [self.plot, self.xaxis, self.yaxis]
+
+        self.plot.update_style(self.style['plot'])
+        self.xaxis.update_style(self.style['plot-label'])
+        self.yaxis.update_style(self.style['plot-label'])
+
+        self.update_yaxis()
+        self.update_xaxis()
+
+    def update_xaxis(self) -> None:
+        f = self.radio.rx_freq()
+        r = self.radio.rx_bw()
+        self.xaxis.update_content(make_frequency_labels(
+            self.xaxis.width, f-r/2, f+r/2
+        ))
+
+    def update_yaxis(self) -> None:
+        self.yaxis.update_content(make_db_labels(
+            self.yaxis.width,
+            self.yaxis.height-1,  # account for xaxis labels
+            self.mindbfs,
+            self.maxdbfs
+        ))
+
+    def update_plot(self, values: list[float]) -> None:
+        plot = Plot(
+            self.plot.width,
+            self.plot.height,
+            0,
+            self.mindbfs,
+            len(values),
+            self.maxdbfs
+        )
+
+        (x1, y1) = (0, values[0])
+        for x in range(1, len(values)):
+            y = values[x]
+            plot.line(x1, y1, x, y)
+            (x1, y1) = (x, y)
+
+        self.plot.update_content(plot.draw())
+
+    def update_sample(self, sample: list[np.complex64]) -> None:
+        self.update_plot(self.get_dbfs(sample))
+
+
+class Waterfall(FFTVisualizer):
+    def layout(self, container: StyledWindow) -> None:
+        (self.waterfall, self.xaxis) = container.hsplit(None, 1)
+        self.windows = [self.waterfall, self.xaxis]
+
+        self.xaxis.update_style(self.style['plot-label'])
+        self.update_xaxis()
+
+    def update_xaxis(self) -> None:
+        f = self.radio.rx_freq()
+        r = self.radio.rx_bw()
+        self.xaxis.update_content(make_frequency_labels(
+            self.xaxis.width, f-r/2, f+r/2
+        ))
+
+    def update_sample(self, sample: list[np.complex64]) -> None:
+        def norm(x: float) -> int:
+            x = min(max(x, self.mindbfs), self.maxdbfs)
+            return int((x-self.mindbfs)/(self.maxdbfs-self.mindbfs) * 255)
+
+        dbfs = self.get_dbfs(sample)
+
+        # lerp to waterfall width and normalize values to 0-255
+        values = [norm(x) for x in fit_values(dbfs, self.waterfall.width)]
+        # map to rgb value in style colormap
+        colors = [self.style['colormap'][x] for x in values]
+        # map to styled glyph
+        chars = [Text('█').style({'fg': x}) for x in colors]
+
+        self.waterfall.append_line(''.join(chars))
+
+
+def configure_visualizer(
+    name: str,
+    radio: Radio,
+    options: optparse.Values
+) -> Visualizer:
+    (fftsize, nperseg) = (options.fftsize, options.nperseg)
+
+    if name == 'psd':
+        return PSD(
+            radio,
+            mindbfs=options.mindbfs,
+            maxdbfs=options.maxdbfs,
+            nperseg=fftsize//4 if nperseg is None else min(fftsize, nperseg),
+            window=options.window,
+            zoff=-1.0,
+            style=Styles[options.style]
+        )
+    elif name == 'waterfall':
+        return Waterfall(
+            radio,
+            mindbfs=options.mindbfs,
+            maxdbfs=options.maxdbfs,
+            nperseg=fftsize//4 if nperseg is None else min(fftsize, nperseg),
+            window=options.window,
+            zoff=-1.0,
+            style=Styles[options.style]
+        )
+    else:
+        raise optparse.OptionValueError(f'unknown visualizer {name}.')
