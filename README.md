@@ -78,4 +78,57 @@ Scan all available frequencies. This is a rural area, so we see a cluster of VHF
 ![70-6000mhz](docs/images/70-6000mhz.png)
 
 ## sigscan
-Coming soon.
+
+Scans a selected center frequency at a selected rate and displays a live PSD plot and/or waterfall.
+
+The visualizer can be selected with `-v`/`--visualizers` as a comma-separated list. If one is selected, it's shown fullscreen. If two, the first takes up the top 35% of the screen and the second the remainder. For example, `psd,waterfall` (the default) will draw a smaller psd plot at the top and a larger waterfall at the bottom.
+
+`python sigseek.py --help`
+
+```
+Usage: sigscan.py [options]
+
+Options:
+  -h, --help            show this help message and exit
+
+  Scanner:
+    -f FREQUENCY, --frequency=FREQUENCY
+                        centre frequency. default 100000000 hz
+    --mindbfs=MINDBFS   plot min dbfs. default -50.
+    --maxdbfs=MAXDBFS   plot max dbfs. default 40.
+
+  FFT (if applicable):
+    --fftsize=FFTSIZE   rx buffer and fft size. default 1024.
+    --nperseg=NPERSEG   welch's method segment size. set to fft size to use
+                        non-segmented periodogram. default fftsize/4.
+    --window=WINDOW     any scipy windowing function that doesn't require
+                        parameters (boxcar, blackman, hamming, hann, etc).
+                        default hann.
+
+  Radio:
+    -r RATE, --rate=RATE
+                        iq sample rate/bandwidth/step size. default 1000000
+                        hz.
+    --gain=GAIN         rx gain in db, or auto attack style (fast or slow).
+                        default fast.
+
+  Display:
+    -v VISUALIZERS, --visualizers=VISUALIZERS
+                        comma-separated list of visualizers. available options
+                        are psd and waterfall. default psd,waterfall.
+    --fps=FPS           frames (rows) to display per second, 0 to not
+                        throttle. default 0.
+    --style=STYLE       visual style. options are tokyonight. default
+                        tokyonight.
+```
+
+Scan 2.4ghz with default options.
+
+`python sigscan.py -f2400000000 --style=cyberpunk`
+![2.4ghz](docs/images/2.4ghz.png)
+
+
+Scan 98.5mhz with a larger sample buffer.
+
+`python sigscan.py -f98500000 --style=cyberpunk --fftsize=4096`
+![98.5mhz](docs/images/98.5mhz.png)
