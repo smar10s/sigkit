@@ -142,6 +142,10 @@ class Visualizer(abc.ABC):
     def update_sample(self, sample: list[np.complex64]) -> None:
         pass
 
+    @abc.abstractmethod
+    def update_radio(self, radio: Radio) -> None:
+        pass
+
     def draw(self) -> None:
         for window in self.windows:
             window.draw()
@@ -278,6 +282,10 @@ class Seek(FFTVisualizer):
             self.update_yaxis()
             self.update_plot()
 
+    def update_radio(self, radio: Radio) -> None:
+        self.radio = radio
+        self.update_header()
+
 
 class PSD(FFTVisualizer):
     def layout(self, container: StyledWindow) -> None:
@@ -330,6 +338,10 @@ class PSD(FFTVisualizer):
     def update_sample(self, sample: list[np.complex64]) -> None:
         self.update_plot(self.get_dbfs(sample))
 
+    def update_radio(self, radio: Radio) -> None:
+        self.radio = radio
+        self.update_xaxis()
+
 
 class Waterfall(FFTVisualizer):
     def layout(self, container: StyledWindow) -> None:
@@ -361,6 +373,10 @@ class Waterfall(FFTVisualizer):
         chars = [Text('█').style({'fg': x}) for x in colors]
 
         self.waterfall.append_line(''.join(chars))
+
+    def update_radio(self, radio: Radio) -> None:
+        self.radio = radio
+        self.update_xaxis()
 
 
 def configure_visualizer(

@@ -1,7 +1,7 @@
 import signal
 from time import time, sleep
 from optparse import OptionParser, OptionGroup, OptionValueError
-from pytui import Terminal, StyledWindow, shutdown
+from pytui import Terminal, Keyboard, StyledWindow, shutdown
 from visualizers import configure_visualizer
 from radio import PlutoRadio
 
@@ -13,7 +13,8 @@ group = OptionGroup(parser, 'Scanner')
 parser.add_option_group(group)
 
 group.add_option('-f', '--frequency', type='int', default=int(100e6), help=(
-    'centre frequency. '
+    'centre frequency. increase or decrease respectively with d/D/] and a/A/[ '
+    '(medium/coarse/fine.) '
     'default %default hz'
 ))
 
@@ -53,7 +54,8 @@ group = OptionGroup(parser, 'Radio')
 parser.add_option_group(group)
 
 group.add_option('-r', '--rate', type='int', default=int(1e6), help=(
-    'iq sample rate/bandwidth/step size. '
+    'iq sample rate/bandwidth/step size. increase or decrease respectively '
+    'with w/W and s/S (medium/coarse.) '
     'default %default hz.'
 ))
 
@@ -80,7 +82,7 @@ group.add_option('--fps', type='int', default=0, help=(
 ))
 
 group.add_option('--style', type='string', default='tokyonight', help=(
-    'visual style. options are tokyonight. '
+    'visual style. options are tokyonight, cyberpunk. '
     'default %default.'
 ))
 
@@ -99,6 +101,7 @@ else:
 
 # ui config
 terminal = Terminal()
+keyboard = Keyboard()
 
 container = StyledWindow(0, 0, terminal.get_columns(), terminal.get_lines())
 
@@ -121,6 +124,40 @@ else:
 
 signal.signal(signal.SIGINT, lambda signal, frame: shutdown())
 
+
+def controls(c: str) -> None:
+    if c == '[':
+        radio.update_rx_freq(radio.rx_freq() - 1000)
+    elif c == 'a':
+        radio.update_rx_freq(radio.rx_freq() - 100000)
+    elif c == 'A':
+        radio.update_rx_freq(radio.rx_freq() - 10000000)
+    if c == ']':
+        radio.update_rx_freq(radio.rx_freq() + 1000)
+    if c == 'd':
+        radio.update_rx_freq(radio.rx_freq() + 100000)
+    elif c == 'D':
+        radio.update_rx_freq(radio.rx_freq() + 10000000)
+    elif c == 'w':
+        radio.update_rx_bw(radio.rx_bw() - 100000)
+    elif c == 'W':
+        radio.update_rx_bw(radio.rx_bw() - 10000000)
+    elif c == 's':
+        radio.update_rx_bw(radio.rx_bw() + 100000)
+    elif c == 'S':
+        radio.update_rx_bw(radio.rx_bw() + 10000000)
+    elif c == '-':
+        pass    # TODO decrease gain
+    elif c == '+':
+        pass    # TODO increase gain
+
+    for v in visualizers:
+        v.update_radio(radio)
+
+
+keyboard.listen(controls)
+
+# start scanning
 try:
     terminal.fullscreen()
 

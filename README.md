@@ -3,7 +3,7 @@ SigKit
 
 A set of command line tools for visualizing (and hopefully eventually manipulating) RF signals.
 
-Currently only includes a signal seeker, but a traditional scanner is coming soon, and hopefully some basic signal generation tools after that.
+Currently includes a signal seeker and scanner. Future plans include some form of basic signal generation, identification, and maybe decoding.
 
 ## Why?
 
@@ -27,6 +27,7 @@ In practical terms, the intention is to allow casual RF cruising directly from a
 
 Clone and `pip install -r requirements.txt`.
 
+Note that it does require matplotlib, but only to generate colormaps.
 
 # Usage
 
@@ -83,7 +84,9 @@ Scans a selected center frequency at a selected rate and displays a live PSD plo
 
 The visualizer can be selected with `-v`/`--visualizers` as a comma-separated list. If one is selected, it's shown fullscreen. If two, the first takes up the top 35% of the screen and the second the remainder. For example, `psd,waterfall` (the default) will draw a smaller psd plot at the top and a larger waterfall at the bottom.
 
-`python sigseek.py --help`
+Keyboard navigation is WASD-style: A and D "pan" left or right by increase or decreasing the center frequency, W and S "zoom" in and out by decreasing and increasing the sample rate. The default step size is 100hz, shift (i.e. uppercase) uses 10mhz instead. `[` and `]` fine tune the center frequency in steps of 1khz.
+
+`python sigscan.py --help`
 
 ```
 Usage: sigscan.py [options]
@@ -93,7 +96,9 @@ Options:
 
   Scanner:
     -f FREQUENCY, --frequency=FREQUENCY
-                        centre frequency. default 100000000 hz
+                        centre frequency. increase or decrease respectively
+                        with d/D/] and a/A/[ (medium/coarse/fine.) default
+                        100000000 hz
     --mindbfs=MINDBFS   plot min dbfs. default -50.
     --maxdbfs=MAXDBFS   plot max dbfs. default 40.
 
@@ -107,8 +112,9 @@ Options:
 
   Radio:
     -r RATE, --rate=RATE
-                        iq sample rate/bandwidth/step size. default 1000000
-                        hz.
+                        iq sample rate/bandwidth/step size. increase or
+                        decrease respectively with w/W and s/S
+                        (medium/coarse.) default 1000000 hz.
     --gain=GAIN         rx gain in db, or auto attack style (fast or slow).
                         default fast.
 
@@ -118,8 +124,8 @@ Options:
                         are psd and waterfall. default psd,waterfall.
     --fps=FPS           frames (rows) to display per second, 0 to not
                         throttle. default 0.
-    --style=STYLE       visual style. options are tokyonight. default
-                        tokyonight.
+    --style=STYLE       visual style. options are tokyonight, cyberpunk.
+                        default tokyonight.
 ```
 
 Scan 2.4ghz with default options.
@@ -132,3 +138,13 @@ Scan 98.5mhz with a larger sample buffer.
 
 `python sigscan.py -f98500000 --style=cyberpunk --fftsize=4096`
 ![98.5mhz](docs/images/98.5mhz.png)
+
+Random panning with default options.
+
+`python sigscan.py`
+![scanner-panned](docs/images/scanner-panned.png)
+
+#### TODO
+- more keyboard control (gain)
+- constellation plot
+
