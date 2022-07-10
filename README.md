@@ -11,6 +11,8 @@ Initially more of an art project/experiment to see if I could get any useful RF 
 
 In practical terms, the intention is to allow casual RF cruising directly from a terminal, potentially remote, without a GTK popup or other GUI.
 
+It's not a replacement for a real scanner, text just doesn't have the fidelity for that, but it can give some idea.
+
 ## Requirements:
 
 ### SDR
@@ -40,8 +42,6 @@ Continuously scans a target frequency range, plotting dbfs vs frequency as a sca
 
 Running without options will scan entire available frequency range. See `--help` for more options.
 
-`python sigseek.py --help`
-
 ```
 Usage: sigseek.py [options]
 
@@ -50,20 +50,30 @@ Options:
   -f FRANGE, --frange=FRANGE
                         frequency range expressed as min:max. defaults to
                         radio range.
-  -r RATE, --rate=RATE  sample rate/bandwidth/step size. default 1000000 hz.
   -l LINGER, --linger=LINGER
                         number of samples to collect before moving to next
-                        frequency. default 40.
+                        frequency. default 20.
   -p MINDBFS, --mindbfs=MINDBFS
                         record signals above this dbfs threshold. default 0.
-  --fftsize=FFTSIZE     rx buffer and fft size. default 1024.
-  --nperseg=NPERSEG     welch's method segment size. set to fft size to use
+
+  FFT:
+    --fftsize=FFTSIZE   rx buffer and fft size. default 1024.
+    --nperseg=NPERSEG   welch's method segment size. set to fft size to use
                         faster non-segmented periodogram. default fftsize/4.
-  --window=WINDOW       any scipy windowing function that doesn't require
+    --window=WINDOW     any scipy windowing function that doesn't require
                         parameters (boxcar, blackman, hamming, hann, etc).
                         default hann.
-  --gain=GAIN           rx gain in db, or auto attack style (fast or slow).
+
+  Radio:
+    -r RATE, --rate=RATE
+                        iq sample rate/bandwidth/step size. default 1000000
+                        hz.
+    --gain=GAIN         rx gain in db, or auto attack style (fast or slow).
                         default fast
+
+  Display:
+    --style=STYLE       visual style. options are tokyonight, cyberpunk.
+                        default tokyonight
 ```
 
 Look for local FM radio stations from 80 to 105mhz. Each line represents a separate station, with the height indicating reception strength.
@@ -84,9 +94,14 @@ Scans a selected center frequency at a selected rate and displays a live PSD plo
 
 The visualizer can be selected with `-v`/`--visualizers` as a comma-separated list. If one is selected, it's shown fullscreen. If two, the first takes up the top 35% of the screen and the second the remainder. For example, `psd,waterfall` (the default) will draw a smaller psd plot at the top and a larger waterfall at the bottom.
 
-Keyboard navigation is WASD-style: A and D "pan" left or right by increase or decreasing the center frequency, W and S "zoom" in and out by decreasing and increasing the sample rate. The default step size is 100hz, shift (i.e. uppercase) uses 10mhz instead. `[` and `]` fine tune the center frequency in steps of 1khz.
+### Controls:
+WASD-style key navigation.
+- `A`/`a`/`[` - "pan left", increase center frequency by 10mhz, 0.1mhz or 100kz.
+- `D`/`d`/`]` - "pan right", decrease center frequency by 10mhz, 0.1mhz or 100kz.
+- `W`/`w` - "zoom in", decrease sample rate by 10mhz or 0.1mhz
+- `S`/`s` - "zoom out", increase sample rate by 10mhz or 0.1mhz
+- `c`, `p`, `f` - toggle fullscreen constellation, psd or waterfall
 
-`python sigscan.py --help`
 
 ```
 Usage: sigscan.py [options]
@@ -121,8 +136,11 @@ Options:
   Display:
     -v VISUALIZERS, --visualizers=VISUALIZERS
                         comma-separated list of visualizers. available options
-                        are psd and waterfall. default psd,waterfall.
-    --fps=FPS           frames (rows) to display per second, 0 to not
+                        are [p]sd, water[f]all and [c]onstellation. you can
+                        toggle between a fullscreen version of each and your
+                        selected visualizers with the keys in brackets. default
+                        psd,waterfall.
+    --fps=FPS           frames (or rows) to display per second, 0 to not
                         throttle. default 0.
     --style=STYLE       visual style. options are tokyonight, cyberpunk.
                         default tokyonight.
@@ -144,7 +162,10 @@ Random panning with default options.
 `python sigscan.py`
 ![scanner-panned](docs/images/scanner-panned.png)
 
+Show PSD and constellation plot at 120mhz.
+
+`python sigscan.py -f120000000 --visualizers=psd,constellation`
+![120mhz-psdconst](docs/images/120mhz-psdconst.png)
+
 #### TODO
 - more keyboard control (gain)
-- constellation plot
-

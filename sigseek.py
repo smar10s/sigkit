@@ -62,7 +62,7 @@ group = OptionGroup(parser, 'Display')
 parser.add_option_group(group)
 
 group.add_option('--style', type='string', default='tokyonight', help=(
-    'visual style. options are tokyonight. '
+    'visual style. options are tokyonight, cyberpunk. '
     'default %default'
 ))
 

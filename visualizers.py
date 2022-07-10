@@ -379,7 +379,28 @@ class Waterfall(FFTVisualizer):
         self.update_xaxis()
 
 
-def configure_visualizer(
+class Constellation(Visualizer):
+    def layout(self, container: StyledWindow) -> None:
+        self.plot = container
+        self.plot.update_style(self.style['plot'])
+        self.windows = [self.plot]
+
+    def update_sample(self, sample: list[np.complex64]) -> None:
+        r = 16384   # iq range
+        plot = Plot(self.plot.width, self.plot.height, -r, -r, r, r)
+        # axis
+        plot.line(-r, 0, r, 0)
+        plot.line(0, r, 0, -r)
+        # iq points
+        for point in zip(np.real(sample), np.imag(sample)):
+            plot.point(point[0], point[1])
+        self.plot.update_content(plot.draw())
+
+    def update_radio(self, radio: Radio) -> None:
+        pass
+
+
+def config_visualizer(
     name: str,
     radio: Radio,
     options: optparse.Values
@@ -406,5 +427,7 @@ def configure_visualizer(
             zoff=-1.0,
             style=Styles[options.style]
         )
+    elif name == 'constellation':
+        return Constellation(radio, Styles[options.style])
     else:
         raise optparse.OptionValueError(f'unknown visualizer {name}.')

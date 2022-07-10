@@ -2,8 +2,9 @@ import signal
 from time import time, sleep
 from optparse import OptionParser, OptionGroup, OptionValueError
 from pytui import Terminal, Keyboard, StyledWindow, shutdown
-from visualizers import configure_visualizer
+from visualizers import config_visualizer
 from radio import PlutoRadio
+from controls import ScanControls
 
 
 parser = OptionParser('usage: %prog [options]')
@@ -70,14 +71,16 @@ parser.add_option_group(group)
 
 group.add_option(
     '-v', '--visualizers', type='string', default='psd,waterfall', help=(
-        'comma-separated list of visualizers. available options are psd and '
-        'waterfall. '
-        'default %default.'
+        'comma-separated list of visualizers. available options are [p]sd, '
+        'water[f]all and [c]onstellation. you can toggle between a fullscreen '
+        'version of each and your selected visualizers with the keys in '
+        'brackets. '
+        ' default %default.'
     )
 )
 
 group.add_option('--fps', type='int', default=0, help=(
-    'frames (rows) to display per second, 0 to not throttle. '
+    'frames (or rows) to display per second, 0 to not throttle. '
     'default %default.'
 ))
 
@@ -106,7 +109,7 @@ keyboard = Keyboard()
 container = StyledWindow(0, 0, terminal.get_columns(), terminal.get_lines())
 
 visopt = options.visualizers.split(',')
-visualizers = [configure_visualizer(x, radio, options) for x in visopt]
+visualizers = [config_visualizer(x, radio, options) for x in visopt]
 
 if len(visualizers) == 1:
     visualizers[0].layout(container)
@@ -124,38 +127,8 @@ else:
 
 signal.signal(signal.SIGINT, lambda signal, frame: shutdown())
 
-
-def controls(c: str) -> None:
-    if c == '[':
-        radio.update_rx_freq(radio.rx_freq() - 1000)
-    elif c == 'a':
-        radio.update_rx_freq(radio.rx_freq() - 100000)
-    elif c == 'A':
-        radio.update_rx_freq(radio.rx_freq() - 10000000)
-    if c == ']':
-        radio.update_rx_freq(radio.rx_freq() + 1000)
-    if c == 'd':
-        radio.update_rx_freq(radio.rx_freq() + 100000)
-    elif c == 'D':
-        radio.update_rx_freq(radio.rx_freq() + 10000000)
-    elif c == 'w':
-        radio.update_rx_bw(radio.rx_bw() - 100000)
-    elif c == 'W':
-        radio.update_rx_bw(radio.rx_bw() - 10000000)
-    elif c == 's':
-        radio.update_rx_bw(radio.rx_bw() + 100000)
-    elif c == 'S':
-        radio.update_rx_bw(radio.rx_bw() + 10000000)
-    elif c == '-':
-        pass    # TODO decrease gain
-    elif c == '+':
-        pass    # TODO increase gain
-
-    for v in visualizers:
-        v.update_radio(radio)
-
-
-keyboard.listen(controls)
+controls = ScanControls(radio, visualizers, options, container)
+keyboard.listen(controls.onkey)
 
 # start scanning
 try:
