@@ -19,7 +19,8 @@ It's not a replacement for a real scanner, text just doesn't have the fidelity f
 - ADALM-PLUTO (or compatible)
     - [pyadi-iio](https://pypi.org/project/pyadi-iio/)
     - Assumes you've [updated to AD9364](https://wiki.analog.com/university/tools/pluto/users/customizing#updating_to_the_ad9364) for LO range and bandwidth. Use narrower available values if not.
-- Support for RTL-SDR coming soon.
+- RTL-SDR
+    - [pyrtlsdr](https://pypi.org/project/pyrtlsdr/)
 
 ### Software
 - Python 3.10
@@ -31,13 +32,21 @@ Clone and `pip install -r requirements.txt`.
 
 Note that it does require matplotlib, but only to generate colormaps.
 
-# Usage
+## Configure
+
+Edit `radio.py` and change the constants for frequency range and bandwidth for your device if they do not match.
+
+Defaults assume:
+- Pluto updated to AD9364 (see above)
+- Rafael Micro RTL-SDR
+
+## Usage
 
 Invoke with `python [tool].py [options]`.
 
 All tools run as full screen terminal applications. Ctrl+C exits.
 
-## sigseek
+### sigseek
 Continuously scans a target frequency range, plotting dbfs vs frequency as a scatter plot where dbfs exceeds some threshold (0 by default.)
 
 Running without options will scan entire available frequency range. See `--help` for more options.
@@ -59,21 +68,25 @@ Options:
   FFT:
     --fftsize=FFTSIZE   rx buffer and fft size. default 1024.
     --nperseg=NPERSEG   welch's method segment size. set to fft size to use
-                        faster non-segmented periodogram. default fftsize/4.
+                        non-segmented periodogram. default fftsize/4 for
+                        pluto, fftsize for rtl.
     --window=WINDOW     any scipy windowing function that doesn't require
                         parameters (boxcar, blackman, hamming, hann, etc).
                         default hann.
 
   Radio:
+    --radio=RADIO       radio to use. options are "pluto", "rtlsdr" or "auto".
+                        auto will select pluto or rtlsdr depending on which is
+                        available. default auto.
     -r RATE, --rate=RATE
                         iq sample rate/bandwidth/step size. default 1000000
                         hz.
-    --gain=GAIN         rx gain in db, or auto attack style (fast or slow).
-                        default fast
+    --gain=GAIN         rx gain in db, or auto attack style ("fast"/"auto" or
+                        "slow" for pluto, "auto" for rtlsdr). default auto.
 
   Display:
-    --style=STYLE       visual style. options are tokyonight, cyberpunk.
-                        default tokyonight
+    --style=STYLE       visual style. options are tokyonight, cyberpunk,
+                        matrix. default tokyonight
 ```
 
 Look for local FM radio stations from 80 to 105mhz. Each line represents a separate station, with the height indicating reception strength.
@@ -88,13 +101,13 @@ Scan all available frequencies. This is a rural area, so we see a cluster of VHF
 
 ![70-6000mhz](docs/images/70-6000mhz.png)
 
-## sigscan
+### sigscan
 
 Scans a selected center frequency at a selected rate and displays a live PSD plot and/or waterfall.
 
 The visualizer can be selected with `-v`/`--visualizers` as a comma-separated list. If one is selected, it's shown fullscreen. If two, the first takes up the top 35% of the screen and the second the remainder. For example, `psd,waterfall` (the default) will draw a smaller psd plot at the top and a larger waterfall at the bottom.
 
-### Controls:
+#### Controls:
 WASD-style key navigation.
 - `A`/`a`/`[` - "pan left", increase center frequency by 10mhz, 0.1mhz or 100kz.
 - `D`/`d`/`]` - "pan right", decrease center frequency by 10mhz, 0.1mhz or 100kz.
@@ -120,30 +133,34 @@ Options:
   FFT (if applicable):
     --fftsize=FFTSIZE   rx buffer and fft size. default 1024.
     --nperseg=NPERSEG   welch's method segment size. set to fft size to use
-                        non-segmented periodogram. default fftsize/4.
+                        non-segmented periodogram. default fftsize/4 for
+                        pluto, fftsize for rtl.
     --window=WINDOW     any scipy windowing function that doesn't require
                         parameters (boxcar, blackman, hamming, hann, etc).
                         default hann.
 
   Radio:
+    --radio=RADIO       radio to use. options are "pluto", "rtlsdr" or "auto".
+                        auto will select pluto or rtlsdr depending on which is
+                        available. default auto.
     -r RATE, --rate=RATE
                         iq sample rate/bandwidth/step size. increase or
                         decrease respectively with w/W and s/S
                         (medium/coarse.) default 1000000 hz.
-    --gain=GAIN         rx gain in db, or auto attack style (fast or slow).
-                        default fast.
+    --gain=GAIN         rx gain in db, or auto attack style ("fast"/"auto" or
+                        "slow" for pluto, "auto" for rtlsdr). default auto.
 
   Display:
     -v VISUALIZERS, --visualizers=VISUALIZERS
                         comma-separated list of visualizers. available options
                         are [p]sd, water[f]all and [c]onstellation. you can
                         toggle between a fullscreen version of each and your
-                        selected visualizers with the keys in brackets. default
-                        psd,waterfall.
+                        selected visualizers with the keys in brackets.
+                        default psd,waterfall.
     --fps=FPS           frames (or rows) to display per second, 0 to not
                         throttle. default 0.
-    --style=STYLE       visual style. options are tokyonight, cyberpunk.
-                        default tokyonight.
+    --style=STYLE       visual style. options are tokyonight, cyberpunk,
+                        matrix. default tokyonight.
 ```
 
 Scan 2.4ghz with default options.
@@ -169,3 +186,10 @@ Show PSD and constellation plot at 120mhz.
 
 #### TODO
 - more keyboard control (gain)
+
+## Styles
+
+The plot colors as well as the glyph to use for the waterfall can be customized. You can edit or add styles in `visualizer.Styles`. In addition to `tokyonight` and `cyberpunk` used in the screenshots above, the following are included:
+
+### matrix
+![matrix](docs/images/matrix.png)

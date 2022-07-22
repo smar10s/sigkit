@@ -1,24 +1,57 @@
 import abc
 import optparse
+import random
 import numpy as np
+from typing import cast
 from scipy import signal
 from scipy import fft
 from scipy import interpolate
 from matplotlib import colormaps
 from math import ceil
 from pytui import StyledWindow, Plot, Text
-from radio import Radio
+from radio import Radio, RtlRadio, PlutoRadio
 
 
+# returns a matplotlib color map as rgb tuples
 def get_colormap(name: str) -> list[tuple[int, int, int]]:
     colors = [colormaps[name](x) for x in range(0, 256)]
     return [(int(r*255), int(g*255), int(b*255)) for (r, g, b, a) in colors]
+
+
+# returns a gradient between two colors as rgb tuples
+def color_gradient(
+    start: tuple[int, int, int],
+    end: tuple[int, int, int],
+    n: int
+) -> list[tuple[int, int, int]]:
+    gradient = [start]
+    for t in range(1, n):
+        gradient.append(cast(tuple[int, int, int], tuple([
+          int(start[j] + (float(t)/(n-1))*(end[j]-start[j]))
+          for j in range(3)
+        ])))
+    return gradient
+
+
+def get_matrix_colormap() -> list[tuple[int, int, int]]:
+    black = (0, 0, 0)
+    vampire = (0x0d, 0x02, 0x08)
+    dark_green = (0x00, 0x3b, 0x00)
+    islamic_green = (0x00, 0x8f, 0x11)
+    malachite = (0x00, 0xff, 0x41)
+    return (
+        color_gradient(black, vampire, 96)
+        + color_gradient(vampire, dark_green, 32)
+        + color_gradient(dark_green, islamic_green, 64)
+        + color_gradient(islamic_green, malachite, 64)
+    )
 
 
 Styles: dict[str, dict] = {
     # colors from
     # https://marketplace.visualstudio.com/items?itemName=enkia.tokyo-night
     'tokyonight': {
+        'waterfall-glyph': lambda: '█',
         'colormap': get_colormap('viridis'),
         'header': {'bg': 0x1a1b26, 'fg': 0xa9b1d6},
         # 'plot': {'bg': 0x24283b, 'fg': 0xf7768e},   # red
@@ -28,12 +61,35 @@ Styles: dict[str, dict] = {
 
     # https://matplotlib.org/matplotblog/posts/matplotlib-cyberpunk-style/
     'cyberpunk': {
+        'waterfall-glyph': lambda: '█',
         'colormap': get_colormap('viridis'),
         'header': {'bg': 0x2A3459, 'fg': 0x08F7FE},
         # 'plot': {'bg': 0x2A3459, 'fg': 0x08F7FE},
         'plot': {'bg': 0x2A3459, 'fg': 0xFE53BB},
         'plot-label': {'bg': 0x2A3459, 'fg': 0x08F7FE}
-    }
+    },
+
+    # https://www.schemecolor.com/matrix-code-green.php
+    'matrix': {
+        'waterfall-glyph': lambda: random.choice(
+            'ｦｱｲｳｴｵｶｷｸｹｺｻｼｽｾｿﾀﾁﾂﾃﾄﾅﾆﾇﾈﾉﾊﾋﾌﾍﾎﾏﾐﾑﾒﾓﾔﾕﾖﾗﾘﾙﾚﾛﾜﾝ'
+        ),
+        'colormap': get_matrix_colormap(),
+        'header': {'bg': 0x0d0208, 'fg': 0x008f11},
+        'plot': {'bg': 0x0d0208, 'fg': 0x00ff41},
+        'plot-label': {'bg': 0x0d0208, 'fg': 0x008f11}
+    },
+
+    # https://www.nordtheme.com/docs/colors-and-palettes
+    'nord': {
+        'waterfall-glyph': lambda: '█',
+        'colormap': get_colormap('cividis'),
+        'header': {'bg': 0xd8dee9, 'fg': 0x81a1c1},
+        'plot': {'bg': 0xeceff4, 'fg': 0x2e3440},
+        'plot-label': {'bg': 0xd8dee9, 'fg': 0x81a1c1}
+    },
+
+
 }
 
 
@@ -367,10 +423,18 @@ class Waterfall(FFTVisualizer):
 
         # lerp to waterfall width and normalize values to 0-255
         values = [norm(x) for x in fit_values(dbfs, self.waterfall.width)]
+
         # map to rgb value in style colormap
         colors = [self.style['colormap'][x] for x in values]
+
         # map to styled glyph
-        chars = [Text('█').style({'fg': x}) for x in colors]
+        chars = [
+            Text(self.style['waterfall-glyph']()).style({
+                'bg': self.style['plot']['bg'],
+                'fg': x
+            })
+            for x in colors
+        ]
 
         self.waterfall.append_line(''.join(chars))
 
@@ -380,13 +444,22 @@ class Waterfall(FFTVisualizer):
 
 
 class Constellation(Visualizer):
+    def __init__(
+        self,
+        radio: Radio,
+        iqrange: int = 1,
+        style: dict = Styles['tokyonight']
+    ) -> None:
+        super().__init__(radio, style)
+        self.iqrange = iqrange
+
     def layout(self, container: StyledWindow) -> None:
         self.plot = container
         self.plot.update_style(self.style['plot'])
         self.windows = [self.plot]
 
     def update_sample(self, sample: list[np.complex64]) -> None:
-        r = 16384   # iq range
+        r = self.iqrange
         plot = Plot(self.plot.width, self.plot.height, -r, -r, r, r)
         # axis
         plot.line(-r, 0, r, 0)
@@ -400,19 +473,38 @@ class Constellation(Visualizer):
         pass
 
 
+def parse_frange(radio: Radio, options: optparse.Values) -> tuple[int, int]:
+    minf = radio.min_freq()
+    maxf = radio.max_freq()
+
+    if options.frange is None:
+        return (minf, maxf)
+    else:
+        (fstart, fstop) = options.frange.split(':')
+        fstart = minf if fstart == '' else min(maxf, max(minf, int(fstart)))
+        fstop = maxf if fstop == '' else min(maxf, max(minf, int(fstop)))
+        if fstart > fstop:
+            raise optparse.OptionValueError('start frequency higher than stop')
+        options.frange = (fstart, fstop)
+    return options.frange
+
+
 def config_visualizer(
     name: str,
     radio: Radio,
     options: optparse.Values
 ) -> Visualizer:
     (fftsize, nperseg) = (options.fftsize, options.nperseg)
+    # default to non-segmented periodogram for RtlRadio
+    dnperseg = fftsize if isinstance(radio, RtlRadio) else fftsize//4
+    nperseg = dnperseg if nperseg is None else min(fftsize, nperseg)
 
     if name == 'psd':
         return PSD(
             radio,
             mindbfs=options.mindbfs,
             maxdbfs=options.maxdbfs,
-            nperseg=fftsize//4 if nperseg is None else min(fftsize, nperseg),
+            nperseg=nperseg,
             window=options.window,
             zoff=-1.0,
             style=Styles[options.style]
@@ -422,12 +514,26 @@ def config_visualizer(
             radio,
             mindbfs=options.mindbfs,
             maxdbfs=options.maxdbfs,
-            nperseg=fftsize//4 if nperseg is None else min(fftsize, nperseg),
+            nperseg=nperseg,
+            window=options.window,
+            zoff=-1.0,
+            style=Styles[options.style]
+        )
+    elif name == 'seek':
+        (fstart, fstop) = parse_frange(radio, options)
+
+        return Seek(
+            radio,
+            fstart=fstart,
+            fstop=fstop,
+            mindbfs=options.mindbfs,
+            nperseg=nperseg,
             window=options.window,
             zoff=-1.0,
             style=Styles[options.style]
         )
     elif name == 'constellation':
-        return Constellation(radio, Styles[options.style])
+        iqrange = 16384 if isinstance(radio, PlutoRadio) else 1
+        return Constellation(radio, iqrange, Styles[options.style])
     else:
         raise optparse.OptionValueError(f'unknown visualizer {name}.')

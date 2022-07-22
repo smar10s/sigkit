@@ -3,7 +3,7 @@ from time import time, sleep
 from optparse import OptionParser, OptionGroup, OptionValueError
 from pytui import Terminal, Keyboard, StyledWindow, shutdown
 from visualizers import config_visualizer
-from radio import PlutoRadio
+from radio import config_radio
 from controls import ScanControls
 
 
@@ -41,7 +41,7 @@ group.add_option('--fftsize', type='int', default=1024, help=(
 group.add_option('--nperseg', type='int', default=None, help=(
     "welch's method segment size. "
     'set to fft size to use non-segmented periodogram. '
-    'default fftsize/4.'
+    'default fftsize/4 for pluto, fftsize for rtl.'
 ))
 
 group.add_option('--window', type='string', default='hann', help=(
@@ -54,14 +54,21 @@ group.add_option('--window', type='string', default='hann', help=(
 group = OptionGroup(parser, 'Radio')
 parser.add_option_group(group)
 
+group.add_option('--radio', type='string', default='auto', help=(
+    'radio to use. options are "pluto", "rtlsdr" or "auto". auto will select '
+    'pluto or rtlsdr depending on which is available. '
+    'default %default.'
+))
+
 group.add_option('-r', '--rate', type='int', default=int(1e6), help=(
     'iq sample rate/bandwidth/step size. increase or decrease respectively '
     'with w/W and s/S (medium/coarse.) '
     'default %default hz.'
 ))
 
-group.add_option('--gain', type='string', default='fast', help=(
-    "rx gain in db, or auto attack style (fast or slow). "
+group.add_option('--gain', type='string', default='auto', help=(
+    'rx gain in db, or auto attack style ("fast"/"auto" or "slow" for pluto, '
+    '"auto" for rtlsdr). '
     'default %default.'
 ))
 
@@ -85,22 +92,15 @@ group.add_option('--fps', type='int', default=0, help=(
 ))
 
 group.add_option('--style', type='string', default='tokyonight', help=(
-    'visual style. options are tokyonight, cyberpunk. '
+    'visual style. options are tokyonight, cyberpunk, matrix. '
     'default %default.'
 ))
 
 (options, args) = parser.parse_args()
 
 # radio config
-radio = PlutoRadio()
-radio.update_rx_buffer_size(options.fftsize)
-radio.update_rx_bw(options.rate)
+radio = config_radio(options)
 radio.update_rx_freq(options.frequency)
-
-if options.gain in ('fast', 'slow'):
-    radio.update_rx_auto_gain(options.gain + '_attack')
-else:
-    radio.update_rx_gain(int(options.gain))
 
 # ui config
 terminal = Terminal()
